@@ -1,12 +1,11 @@
 # ==========================================
-# Model_ML_GridSearch.py
-# Entrenamiento de SVM con MLflow + DVC
+# detection_model_ML.py
+# Entrenamiento de SVM con MLflow
 # ==========================================
 import os
 from pathlib import Path
 import numpy as np
 import cv2
-import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.pipeline import Pipeline
@@ -18,9 +17,6 @@ from scipy.stats import skew, kurtosis
 # MLflow
 import mlflow
 import mlflow.sklearn
-
-# DVC
-import dvc.api
 
 # -----------------------------
 # 1) Configuración general
@@ -34,19 +30,12 @@ LBP_RADIUS = 2
 LBP_POINTS = LBP_RADIUS * 8
 CLASSES = ["glioma", "meningioma", "notumor", "pituitary"]
 
-# Cargar dataset versionado con DVC
-BASE_DIR = Path(
-    dvc.api.get_url(
-        path="data/archive",   # ajusta a tu path en DVC
-        repo=".",
-        rev="main"
-    )
-)
+# Ruta a los datos en la instancia (ya existen en /data/archive)
+BASE_DIR = Path("/data/archive")
 TRAIN_DIR = BASE_DIR / "Training"
 TEST_DIR = BASE_DIR / "Testing"
 
-print("Base de datos DVC:", BASE_DIR)
-
+print("Usando dataset en:", BASE_DIR)
 
 # -----------------------------
 # 2) Funciones auxiliares
