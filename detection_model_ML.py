@@ -31,7 +31,7 @@ LBP_POINTS = LBP_RADIUS * 8
 CLASSES = ["glioma", "meningioma", "notumor", "pituitary"]
 
 # Ruta a los datos en la instancia (ya existen en /data/archive)
-BASE_DIR = Path("/data/archive")
+BASE_DIR = Path("data/archive")  # ruta dentro del repo
 TRAIN_DIR = BASE_DIR / "Training"
 TEST_DIR = BASE_DIR / "Testing"
 
