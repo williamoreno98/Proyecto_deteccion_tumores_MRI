@@ -1,0 +1,9 @@
+{
+  "classes": [
+    "glioma",
+    "meningioma",
+    "notumor",
+    "pituitary"
+  ],
+  "features": "[brightness,contrast,homogeneity,energy]"
+}
