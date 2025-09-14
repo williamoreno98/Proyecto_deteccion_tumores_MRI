@@ -1,21 +1,24 @@
+# Necesario cuando proxy_pass usa variables como ${API_URL}
+resolver 1.1.1.1 8.8.8.8 ipv6=off valid=300s;
+resolver_timeout 5s;
+
 server {
   listen 0.0.0.0:${PORT};
   server_name _;
 
-  # Archivos estáticos de Vite
+  # Sitio estático (Vite)
   root /usr/share/nginx/html;
   index index.html;
 
-  # Tamaños y timeouts para subir imágenes y esperar la inferencia
+  # Tamaños/tiempos (subida de imágenes y espera de inferencia)
   client_max_body_size 50m;
   proxy_connect_timeout 30s;
   proxy_send_timeout 120s;
   proxy_read_timeout 120s;
 
-  # A) Front llama a /api/... o /api/v1/... -> quitamos /api y reenvíamos
-  #    /api/v1/predict/ml -> /predict/ml
+  # /api/... o /api/v1/...  -> quita /api y reenvía al backend
   location ~ ^/api(/v\d+)?/(.*)$ {
-    set $target /$2;
+    set $target /$2;                         # /api/v1/predict/ml -> /predict/ml
     proxy_pass ${API_URL}$target$is_args$args;
     proxy_http_version 1.1;
     proxy_set_header Connection "";
@@ -23,9 +26,10 @@ server {
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_ssl_server_name on;               # SNI para HTTPS upstream
   }
 
-  # B) Llamadas directas sin /api (por si tu UI usa /predict|/metrics|/health)
+  # Llamadas directas sin /api (por si tu UI usa /predict|/metrics|/health)
   location ~ ^/(predict|metrics|health)(/|$) {
     proxy_pass ${API_URL}$request_uri;
     proxy_http_version 1.1;
@@ -34,11 +38,11 @@ server {
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_ssl_server_name on;
   }
 
-  # C) SPA (todo lo demás vuelve a index.html)
+  # SPA fallback
   location / {
     try_files $uri /index.html;
   }
 }
-
