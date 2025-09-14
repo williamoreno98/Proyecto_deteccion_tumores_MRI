@@ -1,0 +1,47 @@
+# Resolver para proxy_pass con variables
+resolver 1.1.1.1 8.8.8.8 ipv6=off valid=300s;
+resolver_timeout 5s;
+
+server {
+  listen 0.0.0.0:${PORT};
+  server_name _;
+
+  root /usr/share/nginx/html;
+  index index.html;
+
+  # Subida de imágenes y tiempos de inferencia
+  client_max_body_size 50m;
+  proxy_connect_timeout 30s;
+  proxy_send_timeout 120s;
+  proxy_read_timeout 120s;
+
+  # Front llama a /api/... o /api/v1/... -> quitamos /api y reenviamos al backend
+  location ^~ /api/ {
+    rewrite ^/api/(.*)$ /$1 break;          # /api/predict/ml -> /predict/ml
+    proxy_pass ${API_URL};                  # ${API_URL} = dominio del API (sin /)
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $proxy_host;      # importante al ir a otro dominio
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_ssl_server_name on;               # SNI para HTTPS upstream
+  }
+
+  # (Opcional) rutas directas por si tu UI usa /predict|/metrics|/health sin /api
+  location ~ ^/(predict|metrics|health)(/|$) {
+    proxy_pass ${API_URL}$request_uri;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $proxy_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_ssl_server_name on;
+  }
+
+  # SPA fallback
+  location / {
+    try_files $uri /index.html;
+  }
+}
