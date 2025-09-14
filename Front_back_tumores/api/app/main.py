@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+çfrom fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 import json, time
@@ -6,6 +6,9 @@ import numpy as np, time
 import joblib
 from PIL import Image
 from skimage.feature import graycomatrix, graycoprops
+from io import BytesIO
+from skimage.transform import resize
+
 
 from .schemas import PredictMLResponse
 from .inference_ml import predict_from_image_bytes, predict_from_features
@@ -14,20 +17,50 @@ app = FastAPI(title="MRI Tumor API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],      
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-"""app.add_middleware(
-    CORSMiddleware,
     allow_origin_regex=r"^http://(localhost|127\.0\.0\.1):\d+$",
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
-)"""
+)
 
 APP_DIR = Path(__file__).resolve().parent
 ML_DIR  = APP_DIR / "artifacts_ml"
+
+RF_DIR  = APP_DIR / "artifacts_rf"
+
+# Carga perezosa: solo intentamos cuando llamen la ruta RF
+_clf_rf = None
+_le_rf  = None
+_CLASSES_RF = None
+
+def _lazy_load_rf():
+    global _clf_rf, _le_rf, _CLASSES_RF
+    if _clf_rf is not None and _le_rf is not None:
+        return
+    clf_p = RF_DIR / "classifier.joblib"
+    le_p  = RF_DIR / "label_encoder.joblib"
+    if not clf_p.exists() or not le_p.exists():
+      # dejamos que la ruta maneje el error 501
+        raise FileNotFoundError("RF artifacts missing")
+    _clf_rf = joblib.load(clf_p)
+    _le_rf  = joblib.load(le_p)
+    _CLASSES_RF = list(_le_rf.classes_)
+
+def _rf_features_from_uint8(arr: np.ndarray) -> np.ndarray:
+    """Vector 73: [brightness] + 72 GLCM (3 dist x 4 ángulos x 6 props)."""
+    img_small = (resize(arr, (256, 256), anti_aliasing=True) * 255).astype(np.uint8)
+    brightness = float(img_small.mean())
+    distances = [1, 2, 4]
+    angles = [0, np.pi/4, np.pi/2, 3*np.pi/4]
+    glcm = graycomatrix(img_small, distances=distances, angles=angles,
+                        symmetric=True, normed=True, levels=256)
+    props = ["contrast", "dissimilarity", "homogeneity", "energy", "correlation", "ASM"]
+    feats = []
+    for p in props:
+        vals = graycoprops(glcm, p)  # (3,4)
+        feats.append(vals.flatten())
+    glcm_vec = np.concatenate(feats, axis=0)  # 72
+    return np.concatenate([[brightness], glcm_vec]).astype("float32").reshape(1, -1)
+
+
 
 
 @app.get("/health")
@@ -55,6 +88,38 @@ async def predict_ml_features(
         return PredictMLResponse(top_class=top_class, probabilities=probs)
     except Exception as e:
         raise HTTPException(400, f"Error con features: {e}")
+    
+@app.post("/predict/rf", response_model=PredictMLResponse)
+async def predict_rf(file: UploadFile = File(...)):
+    """
+    Predicción con Random Forest (artefactos en api/app/artifacts_rf/).
+    Responde el mismo esquema: model='rf', top_class, probabilities.
+    """
+    # leer imagen
+    try:
+        content = await file.read()
+        arr = np.array(Image.open(BytesIO(content)).convert("L"), dtype=np.uint8)
+    except Exception as e:
+        raise HTTPException(400, f"Error procesando imagen: {e}")
+
+    # cargar artefactos RF si existen
+    try:
+        _lazy_load_rf()
+    except FileNotFoundError:
+        raise HTTPException(501, "RF artifacts not found. Esperados: artifacts_rf/classifier.joblib y label_encoder.joblib")
+
+    # inferencia
+    X = _rf_features_from_uint8(arr)
+    yhat = int(_clf_rf.predict(X)[0])
+    top  = _CLASSES_RF[yhat]
+
+    probs = {}
+    if hasattr(_clf_rf, "predict_proba"):
+        p = _clf_rf.predict_proba(X)[0]
+        probs = {cls: float(p[i]) for i, cls in enumerate(_CLASSES_RF)}
+
+    return PredictMLResponse(model="rf", top_class=top, probabilities=probs)
+
 
 @app.get("/metrics/ml")
 def metrics_ml():
