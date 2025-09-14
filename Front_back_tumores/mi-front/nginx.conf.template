@@ -2,27 +2,26 @@ server {
   listen 0.0.0.0:${PORT};
   server_name _;
 
+  # Archivos del front
   root /usr/share/nginx/html;
   index index.html;
 
-  # Si tu front llama a /api/... (recomendado)
-  location /api/ {
-    proxy_pass ${API_URL};  # <- SIN /api/ al final
-    proxy_ssl_server_name on;
+  # Tamaño por si subes imágenes grandes
+  client_max_body_size 50m;
+
+  # Cualquier endpoint de API pasa al backend (soporta /api, /predict, /metrics, /health)
+  location ~ ^/(api|predict|metrics|health)(/|$) {
+    proxy_pass ${API_URL}$request_uri;   # mantiene el path exacto
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
   }
 
-  # Extra: si tu front llama directo a /predict o /metrics
-  location /predict/ { proxy_pass ${API_URL}; proxy_ssl_server_name on; }
-  location /metrics/ { proxy_pass ${API_URL}; proxy_ssl_server_name on; }
-  location /health   { proxy_pass ${API_URL}; proxy_ssl_server_name on; }
-
-  # SPA fallback
+  # SPA fallback para tu app de Vite/React
   location / {
     try_files $uri /index.html;
   }
 }
-
