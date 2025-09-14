@@ -1,10 +1,11 @@
 // src/lib/api.ts
-export type ModelKind = "ml" | "dl";
+export type ModelKind = "ml" | "rf";
 
 export type PredictResponse = {
-  model: "ml";
+  model: ModelKind;
   top_class: "glioma" | "meningioma" | "notumor" | "pituitary";
   probabilities: Record<"glioma"|"meningioma"|"notumor"|"pituitary", number>;
+  inference_ms?: number | null;
 };
 
 export type Metrics = {
@@ -14,7 +15,7 @@ export type Metrics = {
   inference_ms: number | null;
 };
 
-// Lee base si existe; si no, usa proxy (/api)
+// Base de la API (si no hay vars, usa proxy /api)
 const RAW_BASE =
   (import.meta.env as any).VITE_API_BASE ??
   (import.meta.env as any).VITE_API_URL ??
@@ -26,25 +27,35 @@ function apiUrl(path: string) {
   return BASE ? `${BASE}${clean}` : `/api${clean}`;
 }
 
-export async function predictML(file: File): Promise<PredictResponse> {
+async function getJsonOrNull(url: string) {
+  const r = await fetch(url);
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text().catch(() => r.statusText)}`);
+  return r.json();
+}
+
+async function predictGeneric(model: ModelKind, file: File): Promise<PredictResponse> {
   const fd = new FormData();
-  fd.append("file", file); // el backend espera "file"
-
-  const res = await fetch(apiUrl("/predict/ml"), {
-    method: "POST",
-    body: fd, // no pongas Content-Type manual
-  });
-
+  fd.append("file", file);
+  const res = await fetch(apiUrl(`/predict/${model}`), { method: "POST", body: fd });
   if (!res.ok) {
     const msg = await res.text().catch(() => res.statusText);
     throw new Error(`HTTP ${res.status}: ${msg}`);
   }
   const data = await res.json();
-  return { model: "ml", ...data };
+  return { model, ...data };
 }
 
+// ML
+export async function predictML(file: File) { return predictGeneric("ml", file); }
 export async function fetchMetricsML(): Promise<Metrics> {
-  const res = await fetch(apiUrl("/metrics/ml"));
-  if (!res.ok) return { precision: null, recall: null, f1: null, inference_ms: null };
-  return res.json();
+  const data = await getJsonOrNull(apiUrl(`/metrics/ml`));
+  return data ?? { precision: null, recall: null, f1: null, inference_ms: null };
+}
+
+// RF
+export async function predictRF(file: File) { return predictGeneric("rf", file); }
+export async function fetchMetricsRF(): Promise<Metrics> {
+  const data = await getJsonOrNull(apiUrl(`/metrics/rf`));
+  return data ?? { precision: null, recall: null, f1: null, inference_ms: null };
 }
