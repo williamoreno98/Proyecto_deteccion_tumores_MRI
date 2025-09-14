@@ -128,6 +128,15 @@ def metrics_ml():
         return {"precision": None, "recall": None, "f1": None, "inference_ms": None}
     return json.loads(p.read_text())
 
+@app.get("/metrics/rf")
+def metrics_rf():
+    p = RF_DIR / "metrics_rf.json"
+    if not p.exists():
+        # Estructura compatible con el front si aún no has generado métricas
+        return {"precision": None, "recall": None, "f1": None, "inference_ms": None}
+    return json.loads(p.read_text())
+
+
 # Recalcular métricas (sobre Testing/)
 RAW = ["glioma_tumor","meningioma_tumor","no_tumor","pituitary_tumor"]
 MAP = {"glioma_tumor":"glioma","meningioma_tumor":"meningioma","no_tumor":"notumor","pituitary_tumor":"pituitary"}
