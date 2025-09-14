@@ -1,3 +1,4 @@
+// src/lib/api.ts
 export type ModelKind = "ml" | "dl";
 
 export type PredictResponse = {
@@ -13,22 +14,43 @@ export type Metrics = {
   inference_ms: number | null;
 };
 
-const BASE = import.meta.env.VITE_API_BASE;
+// Soporta cualquiera de estas vars y cae al proxy si no hay ninguna
+const RAW_BASE =
+  (import.meta.env as any).VITE_API_BASE ??
+  (import.meta.env as any).VITE_API_URL ??
+  "";
+const BASE = typeof RAW_BASE === "string"
+  ? RAW_BASE.replace(/\/+$/, "") // sin slash final
+  : "";
+
+// helper para construir la URL (usa proxy /api cuando BASE está vacío)
+function apiUrl(path: string) {
+  const clean = path.startsWith("/") ? path : `/${path}`;
+  return BASE ? `${BASE}${clean}` : `/api${clean}`;
+}
 
 export async function predictML(file: File): Promise<PredictResponse> {
   const fd = new FormData();
-  fd.append("file", file);
-  const res = await fetch(`${BASE}/predict/ml`, { method: "POST", body: fd });
+  fd.append("file", file);                 // el backend espera "file"
+
+  const res = await fetch(apiUrl("/predict/ml"), {
+    method: "POST",
+    body: fd,
+    // ¡no fijar Content-Type! el navegador pone el boundary
+  });
+
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.detail || `HTTP ${res.status}`);
+    // intenta leer texto por si el backend no responde JSON en error
+    const msg = await res.text().catch(() => res.statusText);
+    throw new Error(`HTTP ${res.status}: ${msg}`);
   }
+
   const data = await res.json();
   return { model: "ml", ...data };
 }
 
 export async function fetchMetricsML(): Promise<Metrics> {
-  const res = await fetch(`${BASE}/metrics/ml`);
+  const res = await fetch(apiUrl("/metrics/ml"));
   if (!res.ok) return { precision: null, recall: null, f1: null, inference_ms: null };
   return res.json();
 }
