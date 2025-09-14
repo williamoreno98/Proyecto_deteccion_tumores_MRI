@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { PredictResponse } from "../lib/api";
-import { predictML, predictRF, fetchMetricsML } from "../lib/api";
+import { predictML, predictRF, fetchMetricsML, fetchMetricsRF } from "../lib/api";
 import ProbabilityBar from "./ProbabilityBar";
 import MetricsCard from "./MetricsCard";
 
