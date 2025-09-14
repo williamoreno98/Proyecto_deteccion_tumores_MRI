@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import type { PredictResponse } from "../lib/api";
-import { predictML, fetchMetricsML } from "../lib/api";
+import { predictML, predictRF, fetchMetricsML } from "../lib/api";
 import ProbabilityBar from "./ProbabilityBar";
 import MetricsCard from "./MetricsCard";
 
 type HistoryItem = { filename: string; top: string; pct: number; model: string };
 
 export default function Detector() {
-  const [model, setModel] = useState<"ml"|"dl">("ml");
+  // CAMBIO: ahora el modelo puede ser "ml" o "rf"
+  const [model, setModel] = useState<"ml"|"rf">("rf");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -34,8 +35,12 @@ export default function Detector() {
     setLoading(true); setError(null); setResult(null);
     try {
       let r: PredictResponse;
-      if (model === "ml") r = await predictML(file);
-      else throw new Error("DL aún no disponible");
+      if (model === "ml") {
+        r = await predictML(file);
+      } else {
+        // NUEVO: cuando el modelo es RF usamos /predict/rf
+        r = await predictRF(file);
+      }
       setResult(r);
       const pct = Math.round((r.probabilities[r.top_class] ?? 0) * 100);
       setHistory((h) => [{ filename: file.name, top: r.top_class, pct, model: r.model }, ...h].slice(0,6));
@@ -50,12 +55,12 @@ export default function Detector() {
     setFile(null); setPreview(null); setResult(null); setError(null);
   }
 
-  const disabledDL = true;
-
   return (
     <div className="mx-auto max-w-6xl p-6 space-y-6">
       <header className="flex items-center justify-between">
-        <h1 className="text-xl sm:text-2xl font-semibold">MRI Tumor Detector — <span className="text-indigo-600">ML vs DL</span></h1>
+        <h1 className="text-xl sm:text-2xl font-semibold">
+          MRI Tumor Detector — <span className="text-indigo-600">ML vs RF</span>
+        </h1>
         <a className="text-sm text-indigo-600 hover:underline" href="#">Ver historial</a>
       </header>
 
@@ -63,13 +68,13 @@ export default function Detector() {
       <section className="rounded-2xl border p-4">
         <h3 className="font-medium mb-3">Seleccionar modelo</h3>
         <div className="flex items-center gap-4">
-          <label className={`inline-flex items-center gap-2 px-3 py-2 rounded-2xl border ${disabledDL ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}>
-            <input type="radio" name="model" disabled={disabledDL} checked={model==="dl"} onChange={()=>setModel("dl")} />
-            DL
-          </label>
           <label className="inline-flex items-center gap-2 px-3 py-2 rounded-2xl border cursor-pointer">
             <input type="radio" name="model" checked={model==="ml"} onChange={()=>setModel("ml")} />
             ML
+          </label>
+          <label className="inline-flex items-center gap-2 px-3 py-2 rounded-2xl border cursor-pointer">
+            <input type="radio" name="model" checked={model==="rf"} onChange={()=>setModel("rf")} />
+            RF
           </label>
         </div>
       </section>
@@ -89,7 +94,7 @@ export default function Detector() {
               </label>
               <button
                 onClick={onProcess}
-                disabled={!file || loading || (model==="dl" && disabledDL)}
+                disabled={!file || loading}
                 className="px-4 py-2 rounded-2xl shadow font-medium disabled:opacity-50"
               >
                 {loading ? "Procesando..." : "Procesar"}
@@ -119,7 +124,10 @@ export default function Detector() {
                 <div className="rounded-xl border p-3">
                   <div className="text-sm text-gray-500">Predicción</div>
                   <div className="text-lg font-semibold">
-                    {result.top_class} <span className="text-gray-500 text-sm">({Math.round((result.probabilities[result.top_class] ?? 0)*100)}%)</span>
+                    {result.top_class}{" "}
+                    <span className="text-gray-500 text-sm">
+                      ({Math.round((result.probabilities[result.top_class] ?? 0)*100)}%)
+                    </span>
                   </div>
                 </div>
 
@@ -127,7 +135,7 @@ export default function Detector() {
                   <ProbabilityBar label="glioma"     value={probs!.glioma} />
                   <ProbabilityBar label="meningioma" value={probs!.meningioma} />
                   <ProbabilityBar label="notumor"    value={probs!.notumor} />
-                  <ProbabilityBar label="pituitary"   value={probs!.pituitary} />
+                  <ProbabilityBar label="pituitary"  value={probs!.pituitary} />
                 </div>
 
                 <div className="text-xs text-gray-500">
@@ -149,7 +157,9 @@ export default function Detector() {
               {history.map((h, i) => (
                 <div key={i} className="flex items-center justify-between">
                   <span className="truncate">{h.filename}</span>
-                  <span className="text-gray-600">{h.model.toUpperCase()} · {h.top} ({h.pct}%)</span>
+                  <span className="text-gray-600">
+                    {h.model.toUpperCase()} · {h.top} ({h.pct}%)
+                  </span>
                 </div>
               ))}
             </div>
