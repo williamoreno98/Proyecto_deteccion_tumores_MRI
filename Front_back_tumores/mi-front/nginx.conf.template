@@ -5,9 +5,9 @@ server {
   root /usr/share/nginx/html;
   index index.html;
 
-  # Proxy del front -> API (ajusta la ruta /api si tu front usa otra)
+  # Si tu front llama a /api/... (recomendado)
   location /api/ {
-    proxy_pass ${API_URL}/api/;
+    proxy_pass ${API_URL};  # <- SIN /api/ al final
     proxy_ssl_server_name on;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
@@ -15,8 +15,14 @@ server {
     proxy_set_header X-Forwarded-Proto $scheme;
   }
 
-  # SPA fallback (Vite)
+  # Extra: si tu front llama directo a /predict o /metrics
+  location /predict/ { proxy_pass ${API_URL}; proxy_ssl_server_name on; }
+  location /metrics/ { proxy_pass ${API_URL}; proxy_ssl_server_name on; }
+  location /health   { proxy_pass ${API_URL}; proxy_ssl_server_name on; }
+
+  # SPA fallback
   location / {
     try_files $uri /index.html;
   }
 }
+
