@@ -14,9 +14,17 @@ app = FastAPI(title="MRI Tumor API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=["*"],      
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+"""app.add_middleware(
+    CORSMiddleware,
     allow_origin_regex=r"^http://(localhost|127\.0\.0\.1):\d+$",
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
-)
+)"""
 
 APP_DIR = Path(__file__).resolve().parent
 ML_DIR  = APP_DIR / "artifacts_ml"
