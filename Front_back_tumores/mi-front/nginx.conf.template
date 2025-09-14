@@ -5,13 +5,13 @@ server {
   root /usr/share/nginx/html;
   index index.html;
 
+  # Permite subir imágenes grandes
   client_max_body_size 50m;
 
-  # Si el front llama a /api/... → quitamos /api y mandamos al API
-  location /api/ {
-    # /api/predict/ml  ->  /predict/ml
-    rewrite ^/api/(.*)$ /$1 break;
-    proxy_pass ${API_URL};
+  # A) Prefijos típicos de API: /api, /api/v1  -> quita el prefijo y reenvía tal cual
+  location ~ ^/api(/v\d+)?/(.*)$ {
+    set $target /$2;                         # /api/v1/predict/ml -> /predict/ml
+    proxy_pass ${API_URL}$target$is_args$args;
     proxy_http_version 1.1;
     proxy_set_header Connection "";
     proxy_set_header Host $host;
@@ -20,9 +20,9 @@ server {
     proxy_set_header X-Forwarded-Proto $scheme;
   }
 
-  # También proxyea llamadas directas sin /api (por si tu front usa /predict, /metrics, /health)
+  # B) Llamadas directas sin /api: /predict|/metrics|/health -> al backend
   location ~ ^/(predict|metrics|health)(/|$) {
-    proxy_pass ${API_URL};
+    proxy_pass ${API_URL}$request_uri;
     proxy_http_version 1.1;
     proxy_set_header Connection "";
     proxy_set_header Host $host;
@@ -31,8 +31,10 @@ server {
     proxy_set_header X-Forwarded-Proto $scheme;
   }
 
-  # SPA fallback (Vite/React)
+  # C) Catch-all: cualquier POST u OPTIONS que no sea archivo estático -> backend
   location / {
+    if ($request_method = POST)    { proxy_pass ${API_URL}$request_uri; break; }
+    if ($request_method = OPTIONS) { proxy_pass ${API_URL}$request_uri; break; }
     try_files $uri /index.html;
   }
 }
